@@ -1,87 +1,55 @@
-FROM node:16-alpine3.15 as js-builder
+ARG GRAFANA_VERSION="latest"
 
-ENV NODE_OPTIONS=--max_old_space_size=8000
+FROM grafana/grafana:${GRAFANA_VERSION}-ubuntu
 
-WORKDIR /usr/src/app/
+USER root
 
-COPY package.json yarn.lock ./
-COPY packages packages
-COPY .yarnrc.yml ./
-COPY .yarn .yarn
-COPY plugins-bundled plugins-bundled
+# Set DEBIAN_FRONTEND=noninteractive in environment at build-time
+ARG DEBIAN_FRONTEND=noninteractive
 
-RUN yarn install
+ARG GF_INSTALL_IMAGE_RENDERER_PLUGIN="false"
 
-COPY tsconfig.json .eslintrc .editorconfig .browserslistrc .prettierrc.js babel.config.json .linguirc ./
-COPY public public
-COPY tools tools
-COPY scripts scripts
-COPY emails emails
+ARG GF_GID="0"
+ENV GF_PATHS_PLUGINS="/var/lib/grafana-plugins"
 
-ENV NODE_ENV production
-RUN yarn build
+RUN mkdir -p "$GF_PATHS_PLUGINS" && \
+    chown -R grafana:${GF_GID} "$GF_PATHS_PLUGINS"
 
-FROM golang:1.17.9 AS go-builder
-
-WORKDIR /src/grafana
-
-COPY go.mod go.sum embed.go ./
-COPY Makefile build.go package.json ./
-COPY .bingo .bingo
-COPY pkg pkg/
-COPY cue cue/
-COPY cue.mod cue.mod/
-COPY packages/grafana-schema packages/grafana-schema/
-COPY public/app/plugins public/app/plugins/
-COPY public/api-spec.json public/api-spec.json
-
-RUN go mod verify
-RUN make build-go
-
-FROM ubuntu:20.04
-
-LABEL maintainer="Grafana team <hello@grafana.com>"
-EXPOSE 3000
-
-ARG GF_UID="472"
-ARG GF_GID="472"
-
-ENV PATH="/usr/share/grafana/bin:$PATH" \
-    GF_PATHS_CONFIG="/etc/grafana/grafana.ini" \
-    GF_PATHS_DATA="/var/lib/grafana" \
-    GF_PATHS_HOME="/usr/share/grafana" \
-    GF_PATHS_LOGS="/var/log/grafana" \
-    GF_PATHS_PLUGINS="/var/lib/grafana/plugins" \
-    GF_PATHS_PROVISIONING="/etc/grafana/provisioning"
-
-WORKDIR $GF_PATHS_HOME
-
-COPY conf conf
-
-# curl should be part of the image
-RUN apt-get update && apt-get install -y ca-certificates curl
-
-RUN mkdir -p "$GF_PATHS_HOME/.aws" && \
-  addgroup --system --gid $GF_GID grafana && \
-  adduser --uid $GF_UID --system --ingroup grafana grafana && \
-  mkdir -p "$GF_PATHS_PROVISIONING/datasources" \
-             "$GF_PATHS_PROVISIONING/dashboards" \
-             "$GF_PATHS_PROVISIONING/notifiers" \
-             "$GF_PATHS_PROVISIONING/plugins" \
-             "$GF_PATHS_PROVISIONING/access-control" \
-             "$GF_PATHS_LOGS" \
-             "$GF_PATHS_PLUGINS" \
-             "$GF_PATHS_DATA" && \
-    cp conf/sample.ini "$GF_PATHS_CONFIG" && \
-    cp conf/ldap.toml /etc/grafana/ldap.toml && \
-    chown -R grafana:grafana "$GF_PATHS_DATA" "$GF_PATHS_HOME/.aws" "$GF_PATHS_LOGS" "$GF_PATHS_PLUGINS" "$GF_PATHS_PROVISIONING" && \
-    chmod -R 777 "$GF_PATHS_DATA" "$GF_PATHS_HOME/.aws" "$GF_PATHS_LOGS" "$GF_PATHS_PLUGINS" "$GF_PATHS_PROVISIONING"
-
-COPY --from=go-builder /src/grafana/bin/*/grafana-server /src/grafana/bin/*/grafana-cli bin/
-COPY --from=js-builder /usr/src/app/public public
-COPY --from=js-builder /usr/src/app/tools tools
-
-COPY packaging/docker/run.sh /
+RUN if [ $GF_INSTALL_IMAGE_RENDERER_PLUGIN = "true" ]; then \
+    apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y gdebi-core && \
+    cd /tmp && \
+    curl -LO https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
+    gdebi --n google-chrome-stable_current_amd64.deb && \
+    apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*; \
+fi
 
 USER grafana
-ENTRYPOINT [ "/run.sh" ]
+
+ENV GF_PLUGIN_RENDERING_CHROME_BIN="/usr/bin/google-chrome"
+
+RUN if [ $GF_INSTALL_IMAGE_RENDERER_PLUGIN = "true" ]; then \
+    grafana-cli \
+        --pluginsDir "$GF_PATHS_PLUGINS" \
+        --pluginUrl https://github.com/grafana/grafana-image-renderer/releases/latest/download/plugin-linux-x64-glibc-no-chromium.zip \
+        plugins install grafana-image-renderer; \
+fi
+
+ARG GF_INSTALL_PLUGINS=""
+
+RUN if [ ! -z "${GF_INSTALL_PLUGINS}" ]; then \
+    OLDIFS=$IFS; \
+    IFS=','; \
+    for plugin in ${GF_INSTALL_PLUGINS}; do \
+        IFS=$OLDIFS; \
+        if expr match "$plugin" '.*\;.*'; then \
+            pluginUrl=$(echo "$plugin" | cut -d';' -f 1); \
+            pluginInstallFolder=$(echo "$plugin" | cut -d';' -f 2); \
+            grafana-cli --pluginUrl ${pluginUrl} --pluginsDir "${GF_PATHS_PLUGINS}" plugins install "${pluginInstallFolder}"; \
+        else \
+            grafana-cli --pluginsDir "${GF_PATHS_PLUGINS}" plugins install ${plugin}; \
+        fi \
+    done \
+fi
