@@ -28,5 +28,9 @@ jobs:
         name: Build and push
         uses: docker/build-push-action@v3
         with:
+          build-args: |
+            GRAFANA_VERSION=latest
+            GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource,grafana-clickhouse-datasource
           push: true
           tags: blukhand/grafana-clickhouse:latest
+          
