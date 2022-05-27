@@ -30,7 +30,7 @@ jobs:
         with:
           build-args: |
             GRAFANA_VERSION=latest
-            GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource,grafana-clickhouse-datasource
+            GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource,grafana-clickhouse-datasource,novatec-sdg-panel
           push: true
           tags: blukhand/grafana-clickhouse:latest
           
