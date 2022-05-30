@@ -30,7 +30,7 @@ jobs:
         with:
           build-args: |
             GRAFANA_VERSION=8.5.2
-            GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource,grafana-clickhouse-datasource,novatec-sdg-panel 4.0.2,yesoreyeram-infinity-datasource
+            GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource,grafana-clickhouse-datasource,novatec-sdg-panel,yesoreyeram-infinity-datasource
           push: true
-          tags: blukhand/grafana-clickhouse:1.0.5
+          tags: blukhand/grafana-clickhouse:1.0.6
           
