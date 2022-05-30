@@ -29,8 +29,8 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           build-args: |
-            GRAFANA_VERSION=latest
+            GRAFANA_VERSION=8.5.2
             GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource,grafana-clickhouse-datasource,novatec-sdg-panel 4.0.2,yesoreyeram-infinity-datasource
           push: true
-          tags: blukhand/grafana-clickhouse:1.0.4
+          tags: blukhand/grafana-clickhouse:1.0.5
           
